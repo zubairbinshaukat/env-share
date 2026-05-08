@@ -34,3 +34,17 @@ export interface Project {
   createdAt: number
   updatedAt: number
 }
+
+export interface EncryptedEnvelope {
+  ciphertext: string
+  iv: string
+}
+
+export interface ProjectMeta {
+  shareCode: string
+  name: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ProjectCipherRecord extends ProjectMeta, EncryptedEnvelope {}

@@ -1,4 +1,4 @@
-import { Check, Copy, FolderTree, Layers } from "lucide-react"
+import { Check, Copy } from "lucide-react"
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
@@ -6,8 +6,9 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { copyToClipboard } from "@/lib/env-export"
+import { buildShareUrl } from "@/lib/share-link"
+import type { ProjectMeta } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import type { Project } from "@/lib/types"
 
 function formatDate(ts: number): string {
   try {
@@ -22,23 +23,25 @@ function formatDate(ts: number): string {
 }
 
 interface ProjectCardProps {
-  project: Project
+  project: ProjectMeta
 }
 
 export function ProjectCard({ project }: ProjectCardProps) {
   const navigate = useNavigate()
   const [copied, setCopied] = useState(false)
-  const envCount = project.environments.length
-  const isFolder = project.source.kind === "folder"
-
-  const open = () => navigate(`/project/${project.id}`)
+  const open = () => navigate(`/project/${project.shareCode}`)
 
   const handleCopyShareCode = async (e: React.MouseEvent) => {
     e.stopPropagation()
     try {
-      await copyToClipboard(project.shareCode)
+      const key = window.localStorage.getItem(`project_key_${project.shareCode}`)
+      if (!key) {
+        toast.error("Encryption key not found on this device")
+        return
+      }
+      await copyToClipboard(buildShareUrl(project.shareCode, key))
       setCopied(true)
-      toast.success("Share code copied", {
+      toast.success("Share link copied", {
         description: project.shareCode,
       })
       setTimeout(() => setCopied(false), 1500)
@@ -66,21 +69,13 @@ export function ProjectCard({ project }: ProjectCardProps) {
     >
       <div className="flex items-start justify-between gap-3 px-4">
         <div className="min-w-0 space-y-1">
-          <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-            {isFolder ? (
-              <FolderTree className="size-3" aria-hidden />
-            ) : (
-              <Layers className="size-3" aria-hidden />
-            )}
-            {isFolder ? "Folder" : "Manual"}
+          <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            Encrypted project
           </div>
           <h3 className="truncate font-heading text-[15px] font-medium leading-tight text-foreground">
             {project.name}
           </h3>
         </div>
-        <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-          {envCount} {envCount === 1 ? "env" : "envs"}
-        </span>
       </div>
 
       <div className="flex items-center justify-between gap-2 px-4 pt-1 text-xs text-muted-foreground">

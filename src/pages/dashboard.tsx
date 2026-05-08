@@ -1,15 +1,18 @@
 import { motion } from "framer-motion"
 import { FolderPlus, PackageOpen, Plus } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import { NewProjectDialog } from "@/components/projects/new-project-dialog"
 import { ProjectCard } from "@/components/projects/project-card"
 import { Button } from "@/components/ui/button"
+import { useApi } from "@/lib/api"
 import { useProjectsStore } from "@/store/projects-store"
 
 export function DashboardPage() {
+  const api = useApi()
   const projects = useProjectsStore((s) => s.projects)
-  const hydrated = useProjectsStore((s) => s.hydrated)
+  const loadingList = useProjectsStore((s) => s.loadingList)
+  const fetchProjects = useProjectsStore((s) => s.fetchProjects)
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [initialTab, setInitialTab] = useState<"folder" | "manual">("folder")
@@ -23,6 +26,10 @@ export function DashboardPage() {
     setInitialTab(tab)
     setDialogOpen(true)
   }
+
+  useEffect(() => {
+    fetchProjects(api)
+  }, [api, fetchProjects])
 
   return (
     <motion.div
@@ -46,7 +53,9 @@ export function DashboardPage() {
         </Button>
       </div>
 
-      {hydrated && sorted.length === 0 ? (
+      {loadingList ? (
+        <div className="text-sm text-muted-foreground">Loading projects...</div>
+      ) : sorted.length === 0 ? (
         <EmptyState
           onPickFolder={() => openDialog("folder")}
           onPickManual={() => openDialog("manual")}
@@ -54,7 +63,7 @@ export function DashboardPage() {
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {sorted.map((project) => (
-            <ProjectCard key={project.id} project={project} />
+            <ProjectCard key={project.shareCode} project={project} />
           ))}
         </div>
       )}

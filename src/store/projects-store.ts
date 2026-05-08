@@ -1,151 +1,154 @@
-/**
- * Zustand store for projects.
- * - Mirrors `projects` to localStorage under `envshare_projects`.
- * - Exposes actions for create/import/update/rescan/remove.
- */
-
 import { create } from "zustand"
 
 import {
-  generateShareCode,
-  generateUuid,
-  loadProjects,
-  saveProjects,
-} from "@/lib/local"
+  decryptJSON,
+  encryptJSON,
+  exportKeyB64,
+  generateKey,
+  importKeyB64,
+} from "@/lib/crypto"
+import type { ProjectEnvironment, ProjectMeta } from "@/lib/types"
+import type { useApi } from "@/lib/api"
 import type {
-  EnvVariable,
-  Project,
-  ProjectEnvironment,
-  ProjectId,
-  ProjectSource,
+  ProjectCipherRecord,
 } from "@/lib/types"
 
-export interface ManualProjectInput {
+const PROJECT_KEY_PREFIX = "project_key_"
+
+type ApiClient = ReturnType<typeof useApi>
+
+export interface CreateProjectInput {
   name: string
-  environments: Array<{
-    filename: string
-    variables: EnvVariable[]
-  }>
+  environments: ProjectEnvironment[]
 }
 
-export interface FolderProjectInput {
+export interface DecryptedProject {
+  shareCode: string
   name: string
-  folderName: string
-  environments: Array<{
-    filename: string
-    variables: EnvVariable[]
-  }>
+  environments: ProjectEnvironment[]
+  createdAt: number
+  updatedAt: number
 }
 
-interface ProjectsState {
-  projects: Project[]
-  hydrated: boolean
-  hydrate: () => void
-  getProject: (id: ProjectId) => Project | undefined
-  createManualProject: (input: ManualProjectInput) => Project
-  createFolderProject: (input: FolderProjectInput) => Project
-  createFolderProjects: (inputs: FolderProjectInput[]) => Project[]
-  rescanProject: (
-    id: ProjectId,
-    environments: ProjectEnvironment[],
-  ) => Project | undefined
-  removeProject: (id: ProjectId) => void
-}
-
-function persist(projects: Project[]): void {
-  saveProjects(projects)
-}
-
-function makeProject(args: {
-  name: string
-  source: ProjectSource
-  environments: Array<{ filename: string; variables: EnvVariable[] }>
-}): Project {
-  const now = Date.now()
-  return {
-    id: generateUuid(),
-    name: args.name.trim() || "Untitled project",
-    shareCode: generateShareCode(),
-    source: args.source,
-    environments: args.environments.map((env) => ({
-      id: generateUuid(),
-      filename: env.filename.trim() || ".env",
-      variables: env.variables,
-    })),
-    createdAt: now,
-    updatedAt: now,
+export class MissingKeyError extends Error {
+  constructor(shareCode: string) {
+    super(`Missing key for project ${shareCode}`)
+    this.name = "MissingKeyError"
   }
 }
 
-export const useProjectsStore = create<ProjectsState>((set, get) => ({
+function getKeyStorageName(shareCode: string): string {
+  return `${PROJECT_KEY_PREFIX}${shareCode}`
+}
+
+function saveProjectKey(shareCode: string, key: string): void {
+  window.localStorage.setItem(getKeyStorageName(shareCode), key)
+}
+
+function readProjectKey(shareCode: string): string | null {
+  return window.localStorage.getItem(getKeyStorageName(shareCode))
+}
+
+function removeProjectKey(shareCode: string): void {
+  window.localStorage.removeItem(getKeyStorageName(shareCode))
+}
+
+async function decryptRecord(record: ProjectCipherRecord): Promise<DecryptedProject> {
+  const keyB64 = readProjectKey(record.shareCode)
+  if (!keyB64) throw new MissingKeyError(record.shareCode)
+
+  const key = await importKeyB64(keyB64)
+  const environments = await decryptJSON<ProjectEnvironment[]>(key, {
+    ciphertext: record.ciphertext,
+    iv: record.iv,
+  })
+
+  return {
+    shareCode: record.shareCode,
+    name: record.name,
+    environments,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  }
+}
+
+interface ProjectsState {
+  projects: ProjectMeta[]
+  loadingList: boolean
+  error: string | null
+  setProjects: (projects: ProjectMeta[]) => void
+  fetchProjects: (api: ApiClient) => Promise<void>
+  createProject: (api: ApiClient, input: CreateProjectInput) => Promise<ProjectMeta>
+  updateProject: (
+    api: ApiClient,
+    shareCode: string,
+    input: CreateProjectInput,
+  ) => Promise<ProjectMeta>
+  deleteProject: (api: ApiClient, shareCode: string) => Promise<void>
+  getDecryptedProject: (api: ApiClient, shareCode: string) => Promise<DecryptedProject>
+}
+
+export const useProjectsStore = create<ProjectsState>((set) => ({
   projects: [],
-  hydrated: false,
+  loadingList: false,
+  error: null,
 
-  hydrate: () => {
-    if (get().hydrated) return
-    const projects = loadProjects()
-    set({ projects, hydrated: true })
+  setProjects: (projects) => set({ projects }),
+
+  fetchProjects: async (api) => {
+    set({ loadingList: true, error: null })
+    try {
+      const projects = await api.listProjects()
+      set({ projects })
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : "Could not load projects" })
+    } finally {
+      set({ loadingList: false })
+    }
   },
 
-  getProject: (id) => get().projects.find((p) => p.id === id),
-
-  createManualProject: (input) => {
-    const project = makeProject({
+  createProject: async (api, input) => {
+    const key = await generateKey()
+    const keyB64 = await exportKeyB64(key)
+    const payload = await encryptJSON(key, input.environments)
+    const created = await api.createProject({
       name: input.name,
-      source: { kind: "manual" },
-      environments: input.environments,
+      ciphertext: payload.ciphertext,
+      iv: payload.iv,
     })
-    const next = [project, ...get().projects]
-    set({ projects: next })
-    persist(next)
-    return project
-  },
-
-  createFolderProject: (input) => {
-    const project = makeProject({
-      name: input.name,
-      source: { kind: "folder", folderName: input.folderName },
-      environments: input.environments,
-    })
-    const next = [project, ...get().projects]
-    set({ projects: next })
-    persist(next)
-    return project
-  },
-
-  createFolderProjects: (inputs) => {
-    const created: Project[] = inputs.map((input) =>
-      makeProject({
-        name: input.name,
-        source: { kind: "folder", folderName: input.folderName },
-        environments: input.environments,
-      }),
-    )
-    const next = [...created, ...get().projects]
-    set({ projects: next })
-    persist(next)
+    saveProjectKey(created.shareCode, keyB64)
+    set((state) => ({ projects: [created, ...state.projects] }))
     return created
   },
 
-  rescanProject: (id, environments) => {
-    const list = get().projects
-    const idx = list.findIndex((p) => p.id === id)
-    if (idx === -1) return undefined
-    const updated: Project = {
-      ...list[idx],
-      environments,
-      updatedAt: Date.now(),
-    }
-    const next = [...list]
-    next[idx] = updated
-    set({ projects: next })
-    persist(next)
+  updateProject: async (api, shareCode, input) => {
+    const keyB64 = readProjectKey(shareCode)
+    if (!keyB64) throw new MissingKeyError(shareCode)
+    const key = await importKeyB64(keyB64)
+    const payload = await encryptJSON(key, input.environments)
+    const updated = await api.updateProject(shareCode, {
+      name: input.name,
+      ciphertext: payload.ciphertext,
+      iv: payload.iv,
+    })
+    set((state) => ({
+      projects: state.projects.map((project) =>
+        project.shareCode === shareCode ? updated : project,
+      ),
+    }))
     return updated
   },
 
-  removeProject: (id) => {
-    const next = get().projects.filter((p) => p.id !== id)
-    set({ projects: next })
-    persist(next)
+  deleteProject: async (api, shareCode) => {
+    await api.deleteProject(shareCode)
+    removeProjectKey(shareCode)
+    set((state) => ({
+      projects: state.projects.filter((project) => project.shareCode !== shareCode),
+    }))
+  },
+
+  getDecryptedProject: async (api, shareCode) => {
+    const project = await api.getProject(shareCode)
+    return decryptRecord(project)
   },
 }))

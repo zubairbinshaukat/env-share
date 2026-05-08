@@ -1,5 +1,11 @@
 import { Boxes } from "lucide-react"
 import { Link, NavLink } from "react-router-dom"
+import {
+  SignInButton,
+  SignedIn,
+  SignedOut,
+  UserButton,
+} from "@clerk/clerk-react"
 
 import { ThemeToggle } from "@/components/theme-toggle"
 import { cn } from "@/lib/utils"
@@ -28,6 +34,21 @@ export function TopNav() {
           <NavLink to="/design" className={navClassName} end={false}>
             Design
           </NavLink>
+          <SignedOut>
+            <SignInButton mode="modal">
+              <button
+                type="button"
+                className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
+              >
+                Sign in
+              </button>
+            </SignInButton>
+          </SignedOut>
+          <SignedIn>
+            <div className="ml-2">
+              <UserButton afterSignOutUrl="/" />
+            </div>
+          </SignedIn>
           <ThemeToggle />
         </nav>
       </div>

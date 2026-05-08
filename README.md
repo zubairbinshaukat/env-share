@@ -1,33 +1,63 @@
-PROJECT: EnvShare — a web app to store .env files per project and share them with teammates via simple share codes.
+# EnvShare
 
-TECH STACK:
+EnvShare lets users create and manage `.env` projects, then share encrypted read-only views with anyone using a link.
+
+## Stack
+
 - Vite + React + TypeScript
-- Tailwind CSS for styling
-- shadcn/ui for components
-- Lucide React for icons
-- Upstash Redis for storage
-- Vercel serverless functions for API
-- Deployed on Vercel
+- Clerk (authentication)
+- Upstash Redis (backend storage)
+- Vercel serverless functions (`/api`)
+- Tailwind + shadcn/ui + Framer Motion
 
-CORE FEATURES:
-1. Create projects manually OR by selecting a local folder (File System Access API)
-2. When folder is selected: scan for all .env* files, create a project named after the parent folder, each .env* file becomes an "environment" inside that project
-3. Each project gets a unique share code (random, unguessable)
-4. Anyone with the share code can view, copy, and download the env files
-5. Read-only after import — only changes via manual re-scan
-6. No authentication — projects tied to browser via localStorage; share code = recovery
+## Local development
 
-DATA MODEL (Redis):
-- Key: `project:{shareCode}` → JSON: { id, name, environments: [{ filename, variables: [{key, value}] }], createdAt, updatedAt }
-- Key: `user:{browserUUID}` → JSON: { projectIds: [shareCode1, shareCode2, ...] }
+```bash
+npm install
+npm run dev
+```
 
-UI VIBE:
-- Modern, minimal, dark mode by default with light mode toggle
-- Clean typography (Inter font)
-- Subtle animations (Framer Motion)
-- Generous whitespace
-- Monospace font for env values
-- Color palette: neutral base (zinc/slate), single accent color (emerald or violet)
-- Inspired by Linear, Vercel dashboard, Raycast aesthetic
+## Environment variables
 
-Acknowledge this context and wait for Phase 1.
+Copy `.env.example` to `.env` and fill in values:
+
+```bash
+VITE_CLERK_PUBLISHABLE_KEY=pk_test_xxx
+CLERK_SECRET_KEY=sk_test_xxx
+UPSTASH_REDIS_REST_URL=https://xxx.upstash.io
+UPSTASH_REDIS_REST_TOKEN=xxx
+```
+
+## Clerk setup
+
+1. Create an app at [clerk.com](https://clerk.com/).
+2. Copy:
+   - Publishable key -> `VITE_CLERK_PUBLISHABLE_KEY`
+   - Secret key -> `CLERK_SECRET_KEY`
+3. In Clerk dashboard, enable sign-in/sign-up methods:
+   - Email magic link
+   - Google OAuth
+   - GitHub OAuth
+4. Set allowed redirect URLs for your deployed Vercel URL.
+
+## Upstash Redis setup
+
+1. Create a Redis database at [upstash.com](https://upstash.com/).
+2. From the database REST API section, copy:
+   - REST URL -> `UPSTASH_REDIS_REST_URL`
+   - REST TOKEN -> `UPSTASH_REDIS_REST_TOKEN`
+3. Add both to your `.env` and Vercel project environment variables.
+
+## Deploying to Vercel
+
+1. Import the repository in Vercel.
+2. Add all four environment variables in the Vercel project settings.
+3. Deploy.
+4. Use preview deployments to verify API/auth behavior (`/api/projects`, `/api/share/:shareCode`).
+
+## Security model
+
+- Protected endpoints require Clerk Bearer tokens and enforce owner checks.
+- Shared view endpoint is public (`/s/:shareCode` and `/api/share/:shareCode`).
+- Environment payloads are encrypted client-side (Web Crypto AES-GCM).
+- Encryption key stays in browser context (`#key=...` URL fragment and localStorage key cache).
