@@ -10,6 +10,7 @@ import { createRoot } from "react-dom/client"
 import { BrowserRouter } from "react-router-dom"
 import { ClerkProvider } from "@clerk/clerk-react"
 import { ThemeProvider } from "next-themes"
+import { HelmetProvider } from "react-helmet-async"
 
 import App from "./App.tsx"
 import "./index.css"
@@ -29,9 +30,11 @@ createRoot(document.getElementById("root")!).render(
         enableSystem
         storageKey="envshare-theme"
       >
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
+        <HelmetProvider>
+          <BrowserRouter>
+            <App />
+          </BrowserRouter>
+        </HelmetProvider>
       </ThemeProvider>
     </ClerkProvider>
   </StrictMode>,

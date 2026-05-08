@@ -17,20 +17,20 @@ export interface ProjectEnvironment {
   variables: EnvVariable[]
 }
 
-export type ProjectSource =
+/** Project origin — `manual` for paste-in projects, `folder` for FS imports. */
+export type ProjectSource = "manual" | "folder"
+
+/** Legacy local-only project source, kept for migration support. */
+export type LegacyProjectSource =
   | { kind: "manual" }
-  | {
-      kind: "folder"
-      /** Display name of the originally selected folder (best-effort). */
-      folderName: string
-    }
+  | { kind: "folder"; folderName: string }
 
 export interface Project {
   id: ProjectId
   name: string
   shareCode: ShareCode
   environments: ProjectEnvironment[]
-  source: ProjectSource
+  source: LegacyProjectSource
   createdAt: number
   updatedAt: number
 }
@@ -45,6 +45,16 @@ export interface ProjectMeta {
   name: string
   createdAt: number
   updatedAt: number
+  /** Number of environment files in this project. */
+  environmentCount: number
+  /** Plain filenames for dashboard search/filtering. */
+  environmentFilenames?: string[]
+  /** Project origin. Defaults to "manual" for projects created before Phase 4.5. */
+  source?: ProjectSource
+  /** Stable hash of (folderName + sorted env filenames). Only set for folder imports. */
+  folderFingerprint?: string
+  /** Display name of the originally selected folder. Only set for folder imports. */
+  folderName?: string
 }
 
 export interface ProjectCipherRecord extends ProjectMeta, EncryptedEnvelope {}

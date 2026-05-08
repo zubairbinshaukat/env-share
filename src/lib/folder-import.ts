@@ -61,6 +61,28 @@ export function isFolderPickerSupported(): boolean {
 }
 
 /**
+ * Stable fingerprint for a candidate folder. Hashes the folder name plus the
+ * sorted list of `.env*` filenames discovered inside. Two scans of the same
+ * folder produce the same fingerprint regardless of file value changes; only
+ * adding/removing env files (or renaming the folder) changes the fingerprint.
+ */
+export async function computeFolderFingerprint(
+  folderName: string,
+  filenames: string[],
+): Promise<string> {
+  const sorted = [...filenames].sort()
+  const input = [folderName, ...sorted].join("|")
+  const data = new TextEncoder().encode(input)
+  const digest = await crypto.subtle.digest("SHA-256", data)
+  const bytes = new Uint8Array(digest)
+  let out = ""
+  for (let i = 0; i < bytes.length; i++) {
+    out += bytes[i].toString(16).padStart(2, "0")
+  }
+  return out
+}
+
+/**
  * Open the directory picker. Throws DOMException("AbortError") if user cancels.
  */
 export async function pickDirectoryHandle(): Promise<FileSystemDirectoryHandle> {

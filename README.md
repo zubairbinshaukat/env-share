@@ -17,16 +17,29 @@ npm install
 npm run dev
 ```
 
+`npm run dev` starts the Vite frontend on `http://localhost:5173`.
+For full-stack local development (frontend + Vercel `/api/*` functions), run:
+
+```bash
+vercel link
+npm run dev:vercel
+```
+
+`npm run dev:vercel` serves both frontend and serverless functions on one port (usually `http://localhost:3000`).
+
 ## Environment variables
 
 Copy `.env.example` to `.env` and fill in values:
 
 ```bash
 VITE_CLERK_PUBLISHABLE_KEY=pk_test_xxx
+VITE_API_BASE_URL=
 CLERK_SECRET_KEY=sk_test_xxx
 UPSTASH_REDIS_REST_URL=https://xxx.upstash.io
 UPSTASH_REDIS_REST_TOKEN=xxx
 ```
+
+`VITE_API_BASE_URL` is optional. Leave it empty for same-origin API calls (recommended); set it only when frontend and API are hosted on different origins.
 
 ## Clerk setup
 

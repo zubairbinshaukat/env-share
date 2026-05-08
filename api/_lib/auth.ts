@@ -11,11 +11,16 @@ export async function getUserId(req: VercelRequest): Promise<string> {
     throw new Error("Missing CLERK_SECRET_KEY in server environment")
   }
 
-  const auth = req.headers.authorization
-  if (!auth || !auth.startsWith("Bearer ")) {
+  const authHeader = req.headers.authorization
+  const auth = Array.isArray(authHeader) ? authHeader[0] : authHeader
+  if (!auth || typeof auth !== "string") {
     throw new AuthError("Missing bearer token")
   }
-  const token = auth.slice("Bearer ".length).trim()
+  const bearerMatch = /^Bearer\s+(.+)$/i.exec(auth.trim())
+  if (!bearerMatch) {
+    throw new AuthError("Missing bearer token")
+  }
+  const token = bearerMatch[1]?.trim()
   if (!token) {
     throw new AuthError("Missing bearer token")
   }

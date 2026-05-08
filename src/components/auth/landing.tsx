@@ -1,11 +1,21 @@
-import { Lock, FolderUp, Share2 } from "lucide-react"
+import { SignUpButton } from "@clerk/clerk-react"
+import { motion } from "framer-motion"
+import { CheckCircle2, FolderUp, Lock, Share2 } from "lucide-react"
 import { useState } from "react"
 import type { FormEvent } from "react"
+import { Helmet } from "react-helmet-async"
 import { useNavigate } from "react-router-dom"
-import { SignUpButton } from "@clerk/clerk-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { parseShareInput } from "@/lib/share-link"
 
@@ -30,6 +40,7 @@ const STEPS = [
 export function LandingPage() {
   const navigate = useNavigate()
   const [shareInput, setShareInput] = useState("")
+  const [dialogOpen, setDialogOpen] = useState(false)
 
   function onSubmit(event: FormEvent) {
     event.preventDefault()
@@ -40,58 +51,98 @@ export function LandingPage() {
     }
     const suffix = parsed.key ? `#key=${encodeURIComponent(parsed.key)}` : ""
     navigate(`/s/${encodeURIComponent(parsed.shareCode)}${suffix}`)
+    setDialogOpen(false)
   }
 
   return (
-    <section className="mx-auto max-w-4xl space-y-10">
-      <div className="space-y-4 text-center">
-        <h1 className="text-balance text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
-          Share .env files with your team. Securely.
+    <motion.section
+      className="mx-auto max-w-5xl space-y-12"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
+    >
+      <Helmet>
+        <title>EnvShare - Share .env files securely</title>
+      </Helmet>
+      <div className="space-y-6 py-24 text-center">
+        <p className="text-xs tracking-[0.2em] text-primary">ENVSHARE</p>
+        <h1 className="text-balance text-3xl font-semibold tracking-tight text-foreground sm:text-5xl">
+          Share .env files with your team.
         </h1>
-        <p className="mx-auto max-w-2xl text-base text-muted-foreground">
-          Keep project secrets organized and send encrypted read-only links to
-          teammates without forcing sign-in.
+        <p className="mx-auto max-w-xl text-[18px] leading-relaxed text-muted-foreground">
+          Securely share environment variables via simple links. No setup for recipients. End-to-end encrypted.
         </p>
-        <SignUpButton mode="modal">
-          <Button size="lg">Get started</Button>
-        </SignUpButton>
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <SignUpButton mode="modal">
+            <Button size="lg">Get started - it&apos;s free</Button>
+          </SignUpButton>
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button size="lg" variant="outline">
+                View a shared link
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Open shared project</DialogTitle>
+                <DialogDescription>Paste a share code or full URL.</DialogDescription>
+              </DialogHeader>
+              <form onSubmit={onSubmit} className="space-y-4">
+                <Input
+                  value={shareInput}
+                  onChange={(event) => setShareInput(event.target.value)}
+                  placeholder="Paste share link or share code"
+                  autoComplete="off"
+                />
+                <Button type="submit" className="w-full">
+                  Open shared project
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
+        <p className="text-xs text-muted-foreground">No credit card - Free forever</p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        {STEPS.map((step) => (
-          <article
-            key={step.title}
-            className="rounded-xl border border-border/70 bg-card/70 p-4"
-          >
-            <step.icon className="size-5 text-primary" />
-            <h2 className="mt-3 text-sm font-semibold text-foreground">
-              {step.title}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">{step.desc}</p>
-          </article>
+      <div className="space-y-6 py-16">
+        <h2 className="text-center text-2xl font-semibold tracking-tight">How it works</h2>
+        <div className="grid gap-6 md:grid-cols-3">
+          {STEPS.map((step, idx) => (
+            <article key={step.title} className="rounded-xl border border-border bg-card p-6 text-left">
+              <p className="text-4xl text-muted-foreground">{String(idx + 1).padStart(2, "0")}</p>
+              <step.icon className="mt-4 size-5 text-primary" aria-hidden />
+              <h3 className="mt-4 text-[16px] font-semibold tracking-tight text-foreground">
+                {step.title}
+              </h3>
+              <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground">{step.desc}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+
+      <div className="my-12 flex flex-wrap items-center justify-center gap-6 border-y border-border py-6">
+        {["End-to-end encrypted", "No tracking or analytics", "Open source"].map((item) => (
+          <div key={item} className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+            <CheckCircle2 className="size-4 text-primary" />
+            {item}
+          </div>
         ))}
       </div>
 
-      <form onSubmit={onSubmit} className="mx-auto max-w-2xl space-y-2">
-        <label
-          htmlFor="shareCodeInput"
-          className="text-sm font-medium text-muted-foreground"
-        >
-          Have a share code? Paste it here
-        </label>
-        <div className="flex gap-2">
-          <Input
-            id="shareCodeInput"
-            value={shareInput}
-            onChange={(event) => setShareInput(event.target.value)}
-            placeholder="Paste share link or share code"
-            autoComplete="off"
-          />
-          <Button type="submit" variant="outline">
-            Open
-          </Button>
+      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border py-8 text-sm text-muted-foreground">
+        <span>© 2026 EnvShare</span>
+        <div className="flex items-center gap-4">
+          <a href="https://github.com" className="hover:text-foreground">
+            GitHub
+          </a>
+          <a href="#" className="hover:text-foreground">
+            Privacy
+          </a>
+          <a href="#" className="hover:text-foreground">
+            Terms
+          </a>
         </div>
-      </form>
-    </section>
+      </footer>
+    </motion.section>
   )
 }

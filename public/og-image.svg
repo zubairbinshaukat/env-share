@@ -1,0 +1,9 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="630" fill="#0A0A0A"/>
+  <rect x="120" y="120" width="960" height="390" rx="28" fill="#141414" stroke="#262626"/>
+  <circle cx="220" cy="220" r="34" fill="#10B981"/>
+  <rect x="206" y="206" width="28" height="28" rx="6" fill="white"/>
+  <text x="280" y="240" fill="white" font-family="Inter, Arial, sans-serif" font-size="54" font-weight="700">EnvShare</text>
+  <text x="280" y="300" fill="#A8A29E" font-family="Inter, Arial, sans-serif" font-size="34">Share .env files with your team</text>
+  <text x="280" y="350" fill="#A8A29E" font-family="Inter, Arial, sans-serif" font-size="34">Securely. End-to-end encrypted.</text>
+</svg>

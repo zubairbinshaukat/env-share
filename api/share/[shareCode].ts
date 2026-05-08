@@ -1,17 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 
 import { error, json } from "../_lib/http"
+import type { ProjectRecord } from "../_lib/project-record"
 import { getRedis } from "../_lib/redis"
-
-interface ProjectRecord {
-  shareCode: string
-  name: string
-  ciphertext: string
-  iv: string
-  ownerId: string
-  createdAt: number
-  updatedAt: number
-}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "GET") {
@@ -28,8 +19,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const redis = getRedis()
     const project = await redis.get<ProjectRecord>(`project:${shareCode}`)
+
     if (!project) {
-      error(res, 404, "not_found", "Project not found")
+      error(res, 404, "not_found", "Share link not found")
       return
     }
 
@@ -40,8 +32,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       iv: project.iv,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
+      environmentCount: project.environmentCount ?? 0,
     })
-  } catch {
-    error(res, 500, "internal_error", "Unexpected server error")
+  } catch (err) {
+    error(
+      res,
+      500,
+      "internal_error",
+      err instanceof Error ? err.message : "Unexpected server error",
+    )
   }
 }

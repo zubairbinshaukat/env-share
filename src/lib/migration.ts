@@ -34,6 +34,11 @@ export async function runMigration(
       name: project.name,
       ciphertext: encrypted.ciphertext,
       iv: encrypted.iv,
+      environmentCount: project.environments.length,
+      environmentFilenames: project.environments.map((env) => env.filename),
+      source: project.source.kind === "folder" ? "folder" : "manual",
+      folderName:
+        project.source.kind === "folder" ? project.source.folderName : undefined,
     })
     window.localStorage.setItem(`project_key_${created.shareCode}`, keyB64)
     onProgress?.(index + 1, total)

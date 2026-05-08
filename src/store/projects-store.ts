@@ -7,11 +7,13 @@ import {
   generateKey,
   importKeyB64,
 } from "@/lib/crypto"
-import type { ProjectEnvironment, ProjectMeta } from "@/lib/types"
-import type { useApi } from "@/lib/api"
 import type {
-  ProjectCipherRecord,
+  ProjectEnvironment,
+  ProjectMeta,
+  ProjectSource,
 } from "@/lib/types"
+import type { useApi, UpdateProjectPayload } from "@/lib/api"
+import type { ProjectCipherRecord } from "@/lib/types"
 
 const PROJECT_KEY_PREFIX = "project_key_"
 
@@ -20,6 +22,9 @@ type ApiClient = ReturnType<typeof useApi>
 export interface CreateProjectInput {
   name: string
   environments: ProjectEnvironment[]
+  source?: ProjectSource
+  folderFingerprint?: string
+  folderName?: string
 }
 
 export interface DecryptedProject {
@@ -28,6 +33,9 @@ export interface DecryptedProject {
   environments: ProjectEnvironment[]
   createdAt: number
   updatedAt: number
+  source: ProjectSource
+  folderFingerprint?: string
+  folderName?: string
 }
 
 export class MissingKeyError extends Error {
@@ -41,15 +49,15 @@ function getKeyStorageName(shareCode: string): string {
   return `${PROJECT_KEY_PREFIX}${shareCode}`
 }
 
-function saveProjectKey(shareCode: string, key: string): void {
+export function saveProjectKey(shareCode: string, key: string): void {
   window.localStorage.setItem(getKeyStorageName(shareCode), key)
 }
 
-function readProjectKey(shareCode: string): string | null {
+export function readProjectKey(shareCode: string): string | null {
   return window.localStorage.getItem(getKeyStorageName(shareCode))
 }
 
-function removeProjectKey(shareCode: string): void {
+export function removeProjectKey(shareCode: string): void {
   window.localStorage.removeItem(getKeyStorageName(shareCode))
 }
 
@@ -69,6 +77,9 @@ async function decryptRecord(record: ProjectCipherRecord): Promise<DecryptedProj
     environments,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
+    source: record.source ?? "manual",
+    folderFingerprint: record.folderFingerprint,
+    folderName: record.folderName,
   }
 }
 
@@ -79,16 +90,31 @@ interface ProjectsState {
   setProjects: (projects: ProjectMeta[]) => void
   fetchProjects: (api: ApiClient) => Promise<void>
   createProject: (api: ApiClient, input: CreateProjectInput) => Promise<ProjectMeta>
-  updateProject: (
+  /** Re-encrypt and PUT a manual edit (or full folder sync) of environments. */
+  syncProject: (
     api: ApiClient,
     shareCode: string,
-    input: CreateProjectInput,
+    input: { environments: ProjectEnvironment[] },
+  ) => Promise<ProjectMeta>
+  /** Partial update — name/source/folderName/folderFingerprint only. */
+  patchProject: (
+    api: ApiClient,
+    shareCode: string,
+    patch: UpdateProjectPayload,
   ) => Promise<ProjectMeta>
   deleteProject: (api: ApiClient, shareCode: string) => Promise<void>
+  duplicateProject: (
+    api: ApiClient,
+    shareCode: string,
+  ) => Promise<ProjectMeta>
+  regenerateShareCode: (
+    api: ApiClient,
+    shareCode: string,
+  ) => Promise<ProjectMeta>
   getDecryptedProject: (api: ApiClient, shareCode: string) => Promise<DecryptedProject>
 }
 
-export const useProjectsStore = create<ProjectsState>((set) => ({
+export const useProjectsStore = create<ProjectsState>((set, get) => ({
   projects: [],
   loadingList: false,
   error: null,
@@ -115,22 +141,38 @@ export const useProjectsStore = create<ProjectsState>((set) => ({
       name: input.name,
       ciphertext: payload.ciphertext,
       iv: payload.iv,
+      environmentCount: input.environments.length,
+      environmentFilenames: input.environments.map((env) => env.filename),
+      source: input.source,
+      folderFingerprint: input.folderFingerprint,
+      folderName: input.folderName,
     })
     saveProjectKey(created.shareCode, keyB64)
     set((state) => ({ projects: [created, ...state.projects] }))
     return created
   },
 
-  updateProject: async (api, shareCode, input) => {
+  syncProject: async (api, shareCode, input) => {
     const keyB64 = readProjectKey(shareCode)
     if (!keyB64) throw new MissingKeyError(shareCode)
     const key = await importKeyB64(keyB64)
     const payload = await encryptJSON(key, input.environments)
     const updated = await api.updateProject(shareCode, {
-      name: input.name,
       ciphertext: payload.ciphertext,
       iv: payload.iv,
+      environmentCount: input.environments.length,
+      environmentFilenames: input.environments.map((env) => env.filename),
     })
+    set((state) => ({
+      projects: state.projects.map((project) =>
+        project.shareCode === shareCode ? updated : project,
+      ),
+    }))
+    return updated
+  },
+
+  patchProject: async (api, shareCode, patch) => {
+    const updated = await api.updateProject(shareCode, patch)
     set((state) => ({
       projects: state.projects.map((project) =>
         project.shareCode === shareCode ? updated : project,
@@ -145,6 +187,35 @@ export const useProjectsStore = create<ProjectsState>((set) => ({
     set((state) => ({
       projects: state.projects.filter((project) => project.shareCode !== shareCode),
     }))
+  },
+
+  duplicateProject: async (api, shareCode) => {
+    const original = await get().getDecryptedProject(api, shareCode)
+    const copyName = `${original.name} (copy)`
+    return get().createProject(api, {
+      name: copyName,
+      environments: original.environments.map((env) => ({ ...env })),
+      source: "manual",
+    })
+  },
+
+  regenerateShareCode: async (api, shareCode) => {
+    const decrypted = await get().getDecryptedProject(api, shareCode)
+    const newKey = await generateKey()
+    const newKeyB64 = await exportKeyB64(newKey)
+    const payload = await encryptJSON(newKey, decrypted.environments)
+    const updated = await api.regenerateProject(shareCode, {
+      ciphertext: payload.ciphertext,
+      iv: payload.iv,
+    })
+    saveProjectKey(updated.shareCode, newKeyB64)
+    removeProjectKey(shareCode)
+    set((state) => ({
+      projects: state.projects.map((project) =>
+        project.shareCode === shareCode ? updated : project,
+      ),
+    }))
+    return updated
   },
 
   getDecryptedProject: async (api, shareCode) => {
