@@ -21,6 +21,7 @@ import { parseEnv } from "@/lib/env-parser"
 import {
   isFolderPickerSupported,
   pickDirectoryHandle,
+  ScanLimitError,
   scanDirectoryForEnvFiles,
   type FolderScanResult,
 } from "@/lib/folder-import"
@@ -58,6 +59,10 @@ export function NewProjectDialog({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [manualName, setManualName] = useState("")
   const [drafts, setDrafts] = useState<ManualDraft[]>([makeDraft()])
+  const [scanProgress, setScanProgress] = useState<{
+    foundFiles: number
+    scannedFolders: number
+  } | null>(null)
 
   function reset() {
     setTab(initialTab)
@@ -65,6 +70,7 @@ export function NewProjectDialog({
     setSelected(new Set())
     setManualName("")
     setDrafts([makeDraft()])
+    setScanProgress(null)
     setBusy(false)
   }
 
@@ -80,9 +86,16 @@ export function NewProjectDialog({
     }
 
     setBusy(true)
+    setScanProgress({ foundFiles: 0, scannedFolders: 0 })
     try {
       const handle = await pickDirectoryHandle()
-      const result = await scanDirectoryForEnvFiles(handle)
+      const result = await scanDirectoryForEnvFiles(handle, {
+        onProgress: (progress) =>
+          setScanProgress({
+            foundFiles: progress.foundFiles,
+            scannedFolders: progress.scannedFolders,
+          }),
+      })
       setScanResult(result)
       setSelected(new Set(result.candidates.map((candidate) => candidate.id)))
       if (result.candidates.length === 0) {
@@ -91,7 +104,11 @@ export function NewProjectDialog({
     } catch (err) {
       const isAbort = err instanceof DOMException && err.name === "AbortError"
       if (!isAbort) {
-        toast.error("Could not scan folder")
+        if (err instanceof ScanLimitError) {
+          toast.error(err.message)
+        } else {
+          toast.error("Could not scan folder")
+        }
       }
     } finally {
       setBusy(false)
@@ -195,6 +212,12 @@ export function NewProjectDialog({
                       <p className="mt-3 text-sm text-muted-foreground">
                         Scan a folder for .env files.
                       </p>
+                      {busy && scanProgress ? (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          Scanning... found {scanProgress.foundFiles} files in{" "}
+                          {scanProgress.scannedFolders} folders
+                        </p>
+                      ) : null}
                       <Button className="mt-4" onClick={handleSelectFolder} disabled={busy}>
                         {busy ? "Scanning..." : "Select folder"}
                       </Button>

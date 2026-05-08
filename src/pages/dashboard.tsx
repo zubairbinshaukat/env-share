@@ -12,10 +12,12 @@ export function DashboardPage() {
   const api = useApi()
   const projects = useProjectsStore((s) => s.projects)
   const loadingList = useProjectsStore((s) => s.loadingList)
+  const error = useProjectsStore((s) => s.error)
   const fetchProjects = useProjectsStore((s) => s.fetchProjects)
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [initialTab, setInitialTab] = useState<"folder" | "manual">("folder")
+  const [timedOut, setTimedOut] = useState(false)
 
   const sorted = useMemo(
     () => [...projects].sort((a, b) => b.createdAt - a.createdAt),
@@ -30,6 +32,12 @@ export function DashboardPage() {
   useEffect(() => {
     fetchProjects(api)
   }, [api, fetchProjects])
+
+  useEffect(() => {
+    if (!loadingList) return
+    const timer = window.setTimeout(() => setTimedOut(true), 8000)
+    return () => window.clearTimeout(timer)
+  }, [loadingList])
 
   return (
     <motion.div
@@ -53,8 +61,16 @@ export function DashboardPage() {
         </Button>
       </div>
 
-      {loadingList ? (
-        <div className="text-sm text-muted-foreground">Loading projects...</div>
+      {loadingList && !timedOut ? (
+        <LoadingState />
+      ) : error || timedOut ? (
+        <ErrorState
+          message={timedOut ? "Couldn't load projects in time." : "Couldn't load projects."}
+          onRetry={() => {
+            setTimedOut(false)
+            fetchProjects(api)
+          }}
+        />
       ) : sorted.length === 0 ? (
         <EmptyState
           onPickFolder={() => openDialog("folder")}
@@ -74,6 +90,36 @@ export function DashboardPage() {
         initialTab={initialTab}
       />
     </motion.div>
+  )
+}
+
+function LoadingState() {
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">Loading your projects...</p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, idx) => (
+          <div
+            key={idx}
+            className="h-36 animate-pulse rounded-xl border border-border/70 bg-muted/40"
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="rounded-2xl border border-border/80 bg-muted/20 px-6 py-16 text-center">
+      <h2 className="font-heading text-base font-medium text-foreground">
+        Couldn't load projects
+      </h2>
+      <p className="mt-1 text-[13px] text-muted-foreground">{message}</p>
+      <div className="mt-6">
+        <Button onClick={onRetry}>Retry</Button>
+      </div>
+    </div>
   )
 }
 
@@ -98,12 +144,12 @@ function EmptyState({
         No projects yet
       </h2>
       <p className="mt-1 text-[13px] text-muted-foreground">
-        Import from a folder or create one manually.
+        Create your first project by importing from a folder or adding values manually.
       </p>
       <div className="mt-6 flex flex-wrap justify-center gap-2">
         <Button type="button" onClick={onPickFolder}>
           <FolderPlus className="size-4" />
-          Import from folder
+          Create your first project
         </Button>
         <Button type="button" variant="outline" onClick={onPickManual}>
           <Plus className="size-4" />

@@ -1,32 +1,39 @@
 /**
  * Folder scanning via the File System Access API.
- * Recursively finds files matching `.env*`, groups them by parent folder,
- * and parses them into `ProjectEnvironment` previews.
+ * Uses queue-based BFS with strict safety limits to avoid deep recursion,
+ * large directory traversals, and memory blowups.
  */
 
 import { parseEnv } from "@/lib/env-parser"
 import { generateUuid } from "@/lib/local"
 import type { ProjectEnvironment } from "@/lib/types"
 
-/** Folders we never recurse into; common high-volume noise. */
+/** Folders we never recurse into; hard safety deny-list. */
 const SKIP_DIRS = new Set([
   "node_modules",
   ".git",
   ".next",
-  ".turbo",
-  ".cache",
-  ".vercel",
-  ".idea",
-  ".vscode",
   "dist",
   "build",
-  "out",
+  ".cache",
+  ".vercel",
+  ".turbo",
   "coverage",
-  ".DS_Store",
+  ".nuxt",
+  ".output",
+  "vendor",
+  "target",
+  ".venv",
+  "venv",
   "__pycache__",
+  ".DS_Store",
+  ".idea",
+  ".vscode",
 ])
 
 const ENV_FILE_RE = /^\.env(\..+)?$/
+const MAX_DEPTH = 4
+const MAX_FILES_SCANNED = 5000
 
 export interface FolderScanCandidate {
   /** Stable id for UI selection. */
@@ -73,93 +80,152 @@ interface ScanContext {
   warnings: string[]
   /** Map from full relative folder path → candidate (built up during scan). */
   byFolder: Map<string, FolderScanCandidate>
+  scannedFolders: number
+  matchedFiles: number
+  scannedFiles: number
 }
 
-async function scanDir(
-  handle: FileSystemDirectoryHandle,
-  relativePath: string,
-  ctx: ScanContext,
-): Promise<void> {
-  let entries: AsyncIterable<[string, FileSystemHandle]>
-  try {
-    // `entries()` is iterable on FileSystemDirectoryHandle (spec).
-    entries = (
-      handle as FileSystemDirectoryHandle & {
-        entries: () => AsyncIterable<[string, FileSystemHandle]>
-      }
-    ).entries()
-  } catch (err) {
-    ctx.warnings.push(
-      `Could not read folder "${relativePath || handle.name}": ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    )
-    return
+export class ScanLimitError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "ScanLimitError"
   }
+}
 
-  for await (const [name, child] of entries) {
-    if (child.kind === "directory") {
-      if (SKIP_DIRS.has(name) || name.startsWith(".env")) {
-        // Skip noisy folders, plus folders literally named `.env*`.
-        continue
-      }
-      const childPath = relativePath ? `${relativePath}/${name}` : name
-      try {
-        await scanDir(child as FileSystemDirectoryHandle, childPath, ctx)
-      } catch (err) {
-        ctx.warnings.push(
-          `Skipped "${childPath}": ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        )
-      }
+interface QueueItem {
+  handle: FileSystemDirectoryHandle
+  relativePath: string
+  depth: number
+}
+
+function updateCandidateForEnv(
+  ctx: ScanContext,
+  rootName: string,
+  relativePath: string,
+  filename: string,
+  text: string,
+): void {
+  const folderKey = relativePath || rootName
+  const folderName =
+    relativePath === "" ? rootName : (relativePath.split("/").pop() ?? rootName)
+
+  let candidate = ctx.byFolder.get(folderKey)
+  if (!candidate) {
+    candidate = {
+      id: generateUuid(),
+      folderName,
+      relativePath: relativePath || ".",
+      environments: [],
+    }
+    ctx.byFolder.set(folderKey, candidate)
+  }
+  candidate.environments.push({
+    id: generateUuid(),
+    filename,
+    variables: parseEnv(text),
+  })
+}
+
+async function scanWithBfs(
+  root: FileSystemDirectoryHandle,
+  ctx: ScanContext,
+  onProgress?: (progress: {
+    foundFiles: number
+    scannedFolders: number
+    scannedFiles: number
+  }) => void,
+): Promise<void> {
+  const queue: QueueItem[] = [{ handle: root, relativePath: "", depth: 0 }]
+
+  while (queue.length > 0) {
+    const current = queue.shift() as QueueItem
+    ctx.scannedFolders += 1
+    onProgress?.({
+      foundFiles: ctx.matchedFiles,
+      scannedFolders: ctx.scannedFolders,
+      scannedFiles: ctx.scannedFiles,
+    })
+
+    let entries: AsyncIterable<[string, FileSystemHandle]>
+    try {
+      entries = (
+        current.handle as FileSystemDirectoryHandle & {
+          entries: () => AsyncIterable<[string, FileSystemHandle]>
+        }
+      ).entries()
+    } catch (err) {
+      ctx.warnings.push(
+        `Could not read folder "${current.relativePath || current.handle.name}": ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      )
       continue
     }
 
-    if (child.kind !== "file") continue
-    if (!ENV_FILE_RE.test(name)) continue
-
-    try {
-      const file = await (child as FileSystemFileHandle).getFile()
-      const text = await file.text()
-      const variables = parseEnv(text)
-
-      const folderKey = relativePath || handle.name
-      const folderName =
-        relativePath === ""
-          ? handle.name
-          : (relativePath.split("/").pop() ?? handle.name)
-
-      let candidate = ctx.byFolder.get(folderKey)
-      if (!candidate) {
-        candidate = {
-          id: generateUuid(),
-          folderName,
-          relativePath: relativePath || ".",
-          environments: [],
-        }
-        ctx.byFolder.set(folderKey, candidate)
+    for await (const [name, child] of entries) {
+      if (child.kind === "directory") {
+        if (SKIP_DIRS.has(name) || name.startsWith(".env")) continue
+        if (current.depth >= MAX_DEPTH) continue
+        const nextPath = current.relativePath
+          ? `${current.relativePath}/${name}`
+          : name
+        queue.push({
+          handle: child as FileSystemDirectoryHandle,
+          relativePath: nextPath,
+          depth: current.depth + 1,
+        })
+        continue
       }
-      candidate.environments.push({
-        id: generateUuid(),
-        filename: name,
-        variables,
+
+      if (child.kind !== "file") continue
+
+      ctx.scannedFiles += 1
+      if (ctx.scannedFiles > MAX_FILES_SCANNED) {
+        throw new ScanLimitError(
+          `Scan aborted after ${MAX_FILES_SCANNED.toLocaleString()} files. Narrow the selected folder.`,
+        )
+      }
+      if (!ENV_FILE_RE.test(name)) continue
+
+      try {
+        const file = await (child as FileSystemFileHandle).getFile()
+        const text = await file.text()
+        updateCandidateForEnv(ctx, root.name, current.relativePath, name, text)
+        ctx.matchedFiles += 1
+      } catch (err) {
+        ctx.warnings.push(
+          `Failed to read "${
+            current.relativePath ? `${current.relativePath}/${name}` : name
+          }": ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+      onProgress?.({
+        foundFiles: ctx.matchedFiles,
+        scannedFolders: ctx.scannedFolders,
+        scannedFiles: ctx.scannedFiles,
       })
-    } catch (err) {
-      ctx.warnings.push(
-        `Failed to read "${
-          relativePath ? `${relativePath}/${name}` : name
-        }": ${err instanceof Error ? err.message : String(err)}`,
-      )
     }
   }
 }
 
 export async function scanDirectoryForEnvFiles(
   root: FileSystemDirectoryHandle,
+  options?: {
+    onProgress?: (progress: {
+      foundFiles: number
+      scannedFolders: number
+      scannedFiles: number
+    }) => void
+  },
 ): Promise<FolderScanResult> {
-  const ctx: ScanContext = { warnings: [], byFolder: new Map() }
-  await scanDir(root, "", ctx)
+  const ctx: ScanContext = {
+    warnings: [],
+    byFolder: new Map(),
+    scannedFiles: 0,
+    scannedFolders: 0,
+    matchedFiles: 0,
+  }
+  await scanWithBfs(root, ctx, options?.onProgress)
 
   const candidates = Array.from(ctx.byFolder.values())
   // Sort environments inside each candidate by filename for stable display.
