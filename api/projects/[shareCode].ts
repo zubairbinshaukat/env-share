@@ -96,6 +96,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       error(res, 401, "unauthorized", err.message)
       return
     }
-    error(res, 500, "internal_error", "Unexpected server error")
+    error(
+      res,
+      500,
+      "internal_error",
+      err instanceof Error ? err.message : "Unexpected server error",
+    )
   }
 }
