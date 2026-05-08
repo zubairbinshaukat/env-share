@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 
 import { AuthError, getUserId } from "../_lib/auth"
 import { error, json } from "../_lib/http"
-import { redis } from "../_lib/redis"
+import { getRedis } from "../_lib/redis"
 import { createUniqueShareCode } from "../_lib/share-code"
 
 interface ProjectRecord {
@@ -31,6 +31,7 @@ function isCreateBody(body: unknown): body is {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
+    const redis = getRedis()
     const userId = await getUserId(req)
 
     if (req.method === "POST") {

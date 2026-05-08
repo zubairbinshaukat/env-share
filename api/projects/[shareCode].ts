@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 
 import { AuthError, getUserId } from "../_lib/auth"
 import { error, json } from "../_lib/http"
-import { redis } from "../_lib/redis"
+import { getRedis } from "../_lib/redis"
 
 interface ProjectRecord {
   shareCode: string
@@ -36,6 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    const redis = getRedis()
     const userId = await getUserId(req)
     const key = `project:${shareCode}`
     const project = await redis.get<ProjectRecord>(key)

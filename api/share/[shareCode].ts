@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 
 import { error, json } from "../_lib/http"
-import { redis } from "../_lib/redis"
+import { getRedis } from "../_lib/redis"
 
 interface ProjectRecord {
   shareCode: string
@@ -26,6 +26,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    const redis = getRedis()
     const project = await redis.get<ProjectRecord>(`project:${shareCode}`)
     if (!project) {
       error(res, 404, "not_found", "Project not found")
