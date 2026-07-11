@@ -64,10 +64,14 @@ export function LandingPage() {
       <Helmet>
         <title>EnvShare - Share .env files securely</title>
       </Helmet>
-      <div className="space-y-6 py-24 text-center">
-        <p className="text-xs tracking-[0.2em] text-primary">ENVSHARE</p>
+      <div className="relative space-y-6 py-24 text-center">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 -top-16 -z-10 h-[420px] bg-[image:var(--gradient-hero)]"
+        />
+        <p className="text-gradient text-xs font-medium tracking-[0.2em]">ENVSHARE</p>
         <h1 className="text-balance text-3xl font-semibold tracking-tight text-foreground sm:text-5xl">
-          Share .env files with your team.
+          Share <span className="text-gradient">.env files</span> with your team.
         </h1>
         <p className="mx-auto max-w-xl text-[18px] leading-relaxed text-muted-foreground">
           Securely share environment variables via simple links. No setup for recipients. End-to-end encrypted.
@@ -108,8 +112,11 @@ export function LandingPage() {
         <h2 className="text-center text-2xl font-semibold tracking-tight">How it works</h2>
         <div className="grid gap-6 md:grid-cols-3">
           {STEPS.map((step, idx) => (
-            <article key={step.title} className="rounded-xl border border-border bg-card p-6 text-left">
-              <p className="text-4xl text-muted-foreground">{String(idx + 1).padStart(2, "0")}</p>
+            <article
+              key={step.title}
+              className="rounded-xl border border-border/60 bg-card bg-[image:var(--gradient-card)] p-6 text-left transition-shadow hover:shadow-[var(--shadow-card-hover)]"
+            >
+              <p className="text-gradient text-4xl font-semibold">{String(idx + 1).padStart(2, "0")}</p>
               <step.icon className="mt-4 size-5 text-primary" aria-hidden />
               <h3 className="mt-4 text-[16px] font-semibold tracking-tight text-foreground">
                 {step.title}

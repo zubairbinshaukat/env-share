@@ -1,13 +1,18 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 
 import { AuthError, getUserId } from "../_lib/auth"
+import {
+  getDb,
+  PROJECT_COLUMNS,
+  recordToInsert,
+  rowToRecord,
+} from "../_lib/db"
 import { error, json } from "../_lib/http"
 import {
   toMetaResponse,
   type ProjectRecord,
   type ProjectSource,
 } from "../_lib/project-record"
-import { getRedis } from "../_lib/redis"
 import { createUniqueShareCode } from "../_lib/share-code"
 
 interface CreateBody {
@@ -54,7 +59,7 @@ function isCreateBody(body: unknown): body is CreateBody {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    const redis = getRedis()
+    const db = getDb()
     const userId = await getUserId(req)
 
     if (req.method === "POST") {
@@ -67,29 +72,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const fingerprint = body.folderFingerprint?.trim()
 
       if (fingerprint) {
-        const existingCodes =
-          (await redis.smembers<string>(`user:${userId}:projects`)) ?? []
-        if (existingCodes.length > 0) {
-          const keys = existingCodes.map((code) => `project:${code}`)
-          const records = await redis.mget<ProjectRecord[]>(...keys)
-          const match = (records ?? []).find(
-            (record): record is ProjectRecord =>
-              Boolean(record) &&
-              record.ownerId === userId &&
-              record.folderFingerprint === fingerprint,
-          )
-          if (match) {
-            res.status(409).json({
-              error: {
-                code: "duplicate_fingerprint",
-                message: "A project with this folder fingerprint already exists",
-                shareCode: match.shareCode,
-                name: match.name,
-                updatedAt: match.updatedAt,
-              },
-            })
-            return
-          }
+        const existing = await db.execute({
+          sql: "SELECT * FROM projects WHERE owner_id = ? AND folder_fingerprint = ? LIMIT 1",
+          args: [userId, fingerprint],
+        })
+        if (existing.rows.length > 0) {
+          const match = rowToRecord(existing.rows[0])
+          res.status(409).json({
+            error: {
+              code: "duplicate_fingerprint",
+              message: "A project with this folder fingerprint already exists",
+              shareCode: match.shareCode,
+              name: match.name,
+              updatedAt: match.updatedAt,
+            },
+          })
+          return
         }
       }
 
@@ -110,28 +108,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(body.folderName ? { folderName: body.folderName } : {}),
       }
 
-      await redis.set(`project:${shareCode}`, record)
-      await redis.sadd(`user:${userId}:projects`, shareCode)
+      const placeholders = PROJECT_COLUMNS.map(() => "?").join(", ")
+      await db.execute({
+        sql: `INSERT INTO projects (${PROJECT_COLUMNS.join(", ")}) VALUES (${placeholders})`,
+        args: recordToInsert(record),
+      })
 
       json(res, 201, toMetaResponse(record))
       return
     }
 
     if (req.method === "GET") {
-      const codes = (await redis.smembers<string>(`user:${userId}:projects`)) ?? []
-      if (codes.length === 0) {
-        json(res, 200, { projects: [] })
-        return
-      }
-
-      const keys = codes.map((code) => `project:${code}`)
-      const records = await redis.mget<ProjectRecord[]>(...keys)
-      const projects = (records ?? [])
-        .filter((record): record is ProjectRecord => Boolean(record))
-        .filter((record) => record.ownerId === userId)
-        .map(toMetaResponse)
-        .sort((a, b) => b.createdAt - a.createdAt)
-
+      const result = await db.execute({
+        sql: "SELECT * FROM projects WHERE owner_id = ? ORDER BY created_at DESC",
+        args: [userId],
+      })
+      const projects = result.rows.map((row) => toMetaResponse(rowToRecord(row)))
       json(res, 200, { projects })
       return
     }

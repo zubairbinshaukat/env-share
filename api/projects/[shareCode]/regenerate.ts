@@ -1,9 +1,14 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 
 import { AuthError, getUserId } from "../../_lib/auth"
+import {
+  getDb,
+  PROJECT_COLUMNS,
+  recordToInsert,
+  rowToRecord,
+} from "../../_lib/db"
 import { error, json } from "../../_lib/http"
 import { toMetaResponse, type ProjectRecord } from "../../_lib/project-record"
-import { getRedis } from "../../_lib/redis"
 import { createUniqueShareCode } from "../../_lib/share-code"
 
 interface RegenerateBody {
@@ -32,10 +37,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const redis = getRedis()
+    const db = getDb()
     const userId = await getUserId(req)
-    const oldKey = `project:${shareCode}`
-    const project = await redis.get<ProjectRecord>(oldKey)
+    const found = await db.execute({
+      sql: "SELECT * FROM projects WHERE share_code = ?",
+      args: [shareCode],
+    })
+    const project = found.rows.length > 0 ? rowToRecord(found.rows[0]) : null
 
     if (!project) {
       error(res, 404, "not_found", "Project not found")
@@ -60,10 +68,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       updatedAt: now,
     }
 
-    await redis.set(`project:${newShareCode}`, updated)
-    await redis.sadd(`user:${userId}:projects`, newShareCode)
-    await redis.del(oldKey)
-    await redis.srem(`user:${userId}:projects`, shareCode)
+    // Insert the new row and drop the old one atomically so a mid-failure
+    // can never leave both share codes live or orphan state.
+    const placeholders = PROJECT_COLUMNS.map(() => "?").join(", ")
+    await db.batch(
+      [
+        {
+          sql: `INSERT INTO projects (${PROJECT_COLUMNS.join(", ")}) VALUES (${placeholders})`,
+          args: recordToInsert(updated),
+        },
+        {
+          sql: "DELETE FROM projects WHERE share_code = ?",
+          args: [shareCode],
+        },
+      ],
+      "write",
+    )
 
     json(res, 200, toMetaResponse(updated))
   } catch (err) {

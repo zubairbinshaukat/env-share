@@ -80,7 +80,8 @@ export function DeleteProjectDialog({
           <Button
             type="button"
             variant="destructive"
-            disabled={!matches || busy}
+            loading={busy}
+            disabled={!matches}
             onClick={() => onConfirm()}
           >
             {busy ? "Deleting…" : "Delete project"}

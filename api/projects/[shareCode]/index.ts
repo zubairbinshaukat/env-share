@@ -1,13 +1,13 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 
 import { AuthError, getUserId } from "../../_lib/auth"
+import { getDb, rowToRecord } from "../../_lib/db"
 import { error, json } from "../../_lib/http"
 import {
   toMetaResponse,
   type ProjectRecord,
   type ProjectSource,
 } from "../../_lib/project-record"
-import { getRedis } from "../../_lib/redis"
 
 interface UpdateBody {
   name?: string
@@ -84,10 +84,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const redis = getRedis()
+    const db = getDb()
     const userId = await getUserId(req)
-    const key = `project:${shareCode}`
-    const project = await redis.get<ProjectRecord>(key)
+    const found = await db.execute({
+      sql: "SELECT * FROM projects WHERE share_code = ?",
+      args: [shareCode],
+    })
+    const project = found.rows.length > 0 ? rowToRecord(found.rows[0]) : null
 
     if (!project) {
       error(res, 404, "not_found", "Project not found")
@@ -146,14 +149,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updated.folderName = body.folderName
       }
 
-      await redis.set(key, updated)
+      await db.execute({
+        sql: `UPDATE projects SET
+          name = ?,
+          ciphertext = ?,
+          iv = ?,
+          updated_at = ?,
+          environment_count = ?,
+          environment_filenames = ?,
+          source = ?,
+          folder_fingerprint = ?,
+          folder_name = ?
+        WHERE share_code = ?`,
+        args: [
+          updated.name,
+          updated.ciphertext,
+          updated.iv,
+          updated.updatedAt,
+          updated.environmentCount,
+          JSON.stringify(updated.environmentFilenames ?? []),
+          updated.source,
+          updated.folderFingerprint ?? null,
+          updated.folderName ?? null,
+          shareCode,
+        ],
+      })
       json(res, 200, toMetaResponse(updated))
       return
     }
 
     if (req.method === "DELETE") {
-      await redis.del(key)
-      await redis.srem(`user:${userId}:projects`, shareCode)
+      await db.execute({
+        sql: "DELETE FROM projects WHERE share_code = ?",
+        args: [shareCode],
+      })
       res.status(204).end()
       return
     }

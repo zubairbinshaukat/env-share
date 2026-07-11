@@ -72,17 +72,45 @@ export function DesignSystemPage() {
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
           Design system
         </p>
-        <h1 className="text-balance text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-          Components & tokens
+        <h1 className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+          <span className="text-gradient">Components</span> &amp; tokens
         </h1>
         <p className="max-w-2xl text-pretty text-[15px] leading-relaxed text-muted-foreground">
-          EnvShare uses neutral surfaces with an emerald primary. Mono type is
-          reserved for environment keys and values.
+          EnvShare uses soft violet surfaces with subtle indigo gradients. Mono
+          type is reserved for environment keys and values.
         </p>
         <p className="font-mono text-[13px] leading-relaxed text-muted-foreground">
           DATABASE_URL=&quot;postgresql://user:pass@host:5432/db&quot;
         </p>
       </motion.div>
+
+      <Section
+        id="gradients"
+        title="Gradients"
+        description="Soft violet -> indigo -> sky tokens. Applied to the primary button, hero backdrops, card surfaces, and the app-wide mesh."
+      >
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            { label: "--gradient-primary", image: "var(--gradient-primary)" },
+            { label: "--gradient-hero", image: "var(--gradient-hero)" },
+            { label: "--gradient-mesh-1", image: "var(--gradient-mesh-1)" },
+            { label: "--gradient-card", image: "var(--gradient-card)" },
+          ].map((swatch) => (
+            <div
+              key={swatch.label}
+              className="overflow-hidden rounded-xl border border-border/60"
+            >
+              <div
+                className="h-24 w-full"
+                style={{ backgroundImage: swatch.image }}
+              />
+              <p className="border-t border-border/60 bg-card px-3 py-2 font-mono text-[12px] text-muted-foreground">
+                {swatch.label}
+              </p>
+            </div>
+          ))}
+        </div>
+      </Section>
 
       <Section
         id="buttons"

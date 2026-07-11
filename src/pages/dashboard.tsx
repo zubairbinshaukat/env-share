@@ -6,9 +6,42 @@ import { useSearchParams } from "react-router-dom"
 
 import { NewProjectDialog } from "@/components/projects/new-project-dialog"
 import { ProjectCard } from "@/components/projects/project-card"
+import { ProjectStack } from "@/components/projects/project-stack"
 import { Button } from "@/components/ui/button"
 import { useApi } from "@/lib/api"
+import type { ProjectMeta } from "@/lib/types"
 import { useProjectsStore } from "@/store/projects-store"
+
+interface ProjectGroup {
+  key: string
+  parentName: string
+  projects: ProjectMeta[]
+}
+
+/**
+ * Group projects that share a parent directory (monorepo siblings like
+ * `lighthouse/frontend` + `lighthouse/backend`) into one stack. Simple and
+ * manual projects each stay standalone. Input order (createdAt desc) is
+ * preserved by first appearance.
+ */
+function buildProjectGroups(projects: ProjectMeta[]): ProjectGroup[] {
+  const groups = new Map<string, ProjectGroup>()
+  const order: string[] = []
+  for (const project of projects) {
+    const folderName = project.folderName ?? ""
+    const nested = folderName.includes("/")
+    const parent = nested ? folderName.split("/")[0] : ""
+    const key = nested ? `parent:${parent.toLowerCase()}` : `solo:${project.shareCode}`
+    let group = groups.get(key)
+    if (!group) {
+      group = { key, parentName: nested ? parent : project.name, projects: [] }
+      groups.set(key, group)
+      order.push(key)
+    }
+    group.projects.push(project)
+  }
+  return order.map((key) => groups.get(key) as ProjectGroup)
+}
 
 export function DashboardPage() {
   const api = useApi()
@@ -22,7 +55,7 @@ export function DashboardPage() {
   const [timedOut, setTimedOut] = useState(false)
   const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get("q") ?? "")
   const [debouncedQuery, setDebouncedQuery] = useState("")
-  const [perPage, setPerPage] = useState(6)
+  const [perPage, setPerPage] = useState(9)
   const [pagesShown, setPagesShown] = useState(1)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [, setParams] = useSearchParams()
@@ -43,9 +76,13 @@ export function DashboardPage() {
       return byName || byShareCode || byFilename
     })
   }, [debouncedQuery, sorted])
+  const groups = useMemo(() => buildProjectGroups(filtered), [filtered])
   const visibleCount = perPage * pagesShown
-  const visibleProjects = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount])
-  const hasMore = visibleProjects.length < filtered.length
+  const visibleGroups = useMemo(
+    () => groups.slice(0, visibleCount),
+    [groups, visibleCount],
+  )
+  const hasMore = visibleGroups.length < groups.length
 
   function openDialog(tab: "folder" | "manual") {
     setInitialTab(tab)
@@ -101,7 +138,7 @@ export function DashboardPage() {
         <title>Your projects - EnvShare</title>
       </Helmet>
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <h1 className="text-[32px] font-semibold tracking-tight text-foreground">
+        <h1 className="text-gradient text-[32px] font-semibold tracking-tight">
           Projects
         </h1>
         <Button type="button" onClick={() => openDialog("folder")}>
@@ -170,11 +207,17 @@ export function DashboardPage() {
 
       {loadingList && !timedOut ? (
         <LoadingState />
-      ) : error || timedOut ? (
+      ) : error ? (
         <ErrorState
-          message={
-            timedOut ? "Couldn't load projects in time." : "Couldn't load projects."
-          }
+          message={error}
+          onRetry={() => {
+            setTimedOut(false)
+            fetchProjects(api)
+          }}
+        />
+      ) : loadingList && timedOut ? (
+        <ErrorState
+          message="The request is taking too long to respond. Check your connection and try again."
           onRetry={() => {
             setTimedOut(false)
             fetchProjects(api)
@@ -203,9 +246,17 @@ export function DashboardPage() {
             transition={{ duration: 0.18 }}
             className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
           >
-            {visibleProjects.map((project) => (
-              <ProjectCard key={project.shareCode} project={project} />
-            ))}
+            {visibleGroups.map((group) =>
+              group.projects.length === 1 ? (
+                <ProjectCard key={group.key} project={group.projects[0]} />
+              ) : (
+                <ProjectStack
+                  key={group.key}
+                  parentName={group.parentName}
+                  projects={group.projects}
+                />
+              ),
+            )}
           </motion.div>
           {hasMore ? (
             <div className="flex justify-center">
@@ -235,7 +286,7 @@ function LoadingState() {
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">Loading your projects…</p>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, idx) => (
+        {Array.from({ length: 9 }).map((_, idx) => (
           <div
             key={idx}
             className="h-40 animate-pulse rounded-xl border border-border bg-muted/60"

@@ -27,7 +27,7 @@ export function TopNav() {
           className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground"
         >
           <Boxes className="size-[18px] text-primary" aria-hidden />
-          EnvShare
+          <span className="text-gradient">EnvShare</span>
         </Link>
         <nav className="flex items-center gap-1">
           <SignedOut>
