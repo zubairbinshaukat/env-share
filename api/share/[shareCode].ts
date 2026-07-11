@@ -1,8 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 
+import { getDb, rowToRecord } from "../_lib/db"
 import { error, json } from "../_lib/http"
-import type { ProjectRecord } from "../_lib/project-record"
-import { getRedis } from "../_lib/redis"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "GET") {
@@ -17,8 +16,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const redis = getRedis()
-    const project = await redis.get<ProjectRecord>(`project:${shareCode}`)
+    const db = getDb()
+    const found = await db.execute({
+      sql: "SELECT * FROM projects WHERE share_code = ?",
+      args: [shareCode],
+    })
+    const project = found.rows.length > 0 ? rowToRecord(found.rows[0]) : null
 
     if (!project) {
       error(res, 404, "not_found", "Share link not found")

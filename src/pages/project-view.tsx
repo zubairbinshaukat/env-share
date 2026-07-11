@@ -341,9 +341,13 @@ export function ProjectViewPage() {
     if (!project) return
     if (project.source !== "folder") return
     if (project.folderFingerprint) return
-    // Backfill: if folderFingerprint missing, derive from current envs + folderName.
+    // Best-effort backfill for legacy folder projects with no stored
+    // fingerprint. We no longer know the original scan root/relative path, so
+    // treat the stored folder name as a root-level import; a fresh re-scan of a
+    // nested folder may still register as new, which the review UI handles.
     const fingerprint = await computeFolderFingerprint(
       project.folderName ?? project.name,
+      ".",
       project.environments.map((env) => env.filename),
     )
     try {

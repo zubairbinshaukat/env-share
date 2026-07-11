@@ -176,6 +176,7 @@ export function EnvEditDialog({
           </Button>
           <Button
             type="button"
+            loading={busy}
             disabled={submitDisabled}
             onClick={() => onSubmit(trimmedFilename, body)}
           >

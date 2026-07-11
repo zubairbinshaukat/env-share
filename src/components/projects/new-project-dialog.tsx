@@ -84,6 +84,8 @@ type CandidateStatus =
 interface ResolvedCandidate {
   id: string
   folderName: string
+  /** Repo-qualified name: `env-share` at the root, `lighthouse/frontend` when nested. */
+  displayName: string
   relativePath: string
   fingerprint: string
   environments: ProjectEnvironment[]
@@ -95,6 +97,18 @@ interface ResolvedCandidate {
 
 function makeDraft(): ManualDraft {
   return { id: generateUuid(), filename: ".env", body: "" }
+}
+
+/**
+ * Repo-qualified project name. A root-level `.env` keeps the plain repo name
+ * (`env-share`); a nested folder is prefixed with the repo (`lighthouse/frontend`).
+ */
+function candidateDisplayName(
+  rootName: string,
+  candidate: FolderScanCandidate,
+): string {
+  if (!candidate.relativePath || candidate.relativePath === ".") return rootName
+  return `${rootName}/${candidate.folderName}`
 }
 
 export function NewProjectDialog({
@@ -151,9 +165,11 @@ export function NewProjectDialog({
 
   async function classifyCandidate(
     candidate: FolderScanCandidate,
+    rootName: string,
   ): Promise<ResolvedCandidate> {
     const fingerprint = await computeFolderFingerprint(
-      candidate.folderName,
+      rootName,
+      candidate.relativePath,
       candidate.environments.map((env) => env.filename),
     )
     const match = projects.find(
@@ -162,6 +178,7 @@ export function NewProjectDialog({
     const base = {
       id: candidate.id,
       folderName: candidate.folderName,
+      displayName: candidateDisplayName(rootName, candidate),
       relativePath: candidate.relativePath,
       fingerprint,
       environments: candidate.environments,
@@ -215,7 +232,9 @@ export function NewProjectDialog({
       setPhase("resolving")
       setWarnings(result.warnings)
       const resolved = await Promise.all(
-        result.candidates.map((candidate) => classifyCandidate(candidate)),
+        result.candidates.map((candidate) =>
+          classifyCandidate(candidate, result.rootName),
+        ),
       )
 
       // If user invoked from a specific project, sort that one first.
@@ -297,14 +316,14 @@ export function NewProjectDialog({
     setBusy(true)
     try {
       const project = await createProject(api, {
-        name: candidate.folderName,
+        name: candidate.displayName,
         environments: candidate.environments.map((env) => ({
           ...env,
           id: generateUuid(),
         })),
         source: "folder",
         folderFingerprint: candidate.fingerprint,
-        folderName: candidate.folderName,
+        folderName: candidate.displayName,
       })
       setCandidates((prev) =>
         prev.map((row) =>
@@ -393,14 +412,14 @@ export function NewProjectDialog({
       let firstShareCode: string | null = null
       for (const candidate of queue) {
         const project = await createProject(api, {
-          name: candidate.folderName,
+          name: candidate.displayName,
           environments: candidate.environments.map((env) => ({
             ...env,
             id: generateUuid(),
           })),
           source: "folder",
           folderFingerprint: candidate.fingerprint,
-          folderName: candidate.folderName,
+          folderName: candidate.displayName,
         })
         if (!firstShareCode) firstShareCode = project.shareCode
         setCandidates((prev) =>
@@ -572,7 +591,7 @@ function FolderIdleStep({
           Comparing against existing projects…
         </p>
       ) : null}
-      <Button className="mt-8" onClick={onPick} disabled={busy}>
+      <Button className="mt-8" onClick={onPick} loading={busy}>
         {busy ? "Scanning…" : "Select folder"}
       </Button>
     </div>
@@ -653,7 +672,7 @@ function FolderReviewStep({
             Done
           </Button>
         ) : newCount > 0 ? (
-          <Button onClick={onImportAll} disabled={busy}>
+          <Button onClick={onImportAll} loading={busy}>
             {busy
               ? "Importing…"
               : newCount === 1
@@ -716,7 +735,7 @@ function CandidateRow({
   if (status.kind === "new") {
     return (
       <RowShell candidate={candidate} tone="new" pillLabel="New">
-        <Button size="sm" onClick={onImport} disabled={busy}>
+        <Button size="sm" onClick={onImport} loading={busy}>
           Import
         </Button>
       </RowShell>
@@ -773,7 +792,7 @@ function RowShell({
   return (
     <div className="flex items-center gap-3 rounded-md p-2 transition-colors duration-150 hover:bg-muted/60">
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{candidate.folderName}</p>
+        <p className="truncate text-sm font-medium">{candidate.displayName}</p>
         <p className="text-[11.5px] text-muted-foreground">
           {candidate.environments.length} env file
           {candidate.environments.length === 1 ? "" : "s"}
@@ -830,7 +849,7 @@ function FolderDiffStep({
         <Button variant="ghost" onClick={onCancel} disabled={busy}>
           Cancel
         </Button>
-        <Button onClick={onSync} disabled={busy}>
+        <Button onClick={onSync} loading={busy}>
           {busy ? "Syncing…" : "Sync changes"}
         </Button>
       </div>
@@ -937,7 +956,7 @@ function ManualForm({
         Add another environment
       </Button>
       <div className="flex justify-end">
-        <Button type="submit" disabled={busy}>
+        <Button type="submit" loading={busy}>
           {busy ? "Creating..." : "Create project"}
         </Button>
       </div>

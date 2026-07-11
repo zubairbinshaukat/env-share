@@ -23,7 +23,7 @@ export function SourceBadge({
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10.5px] font-medium",
         isFolder
-          ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+          ? "bg-primary/10 text-primary"
           : "bg-muted text-muted-foreground",
         className,
       )}

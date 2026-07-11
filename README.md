@@ -6,7 +6,7 @@ EnvShare lets users create and manage `.env` projects, then share encrypted read
 
 - Vite + React + TypeScript
 - Clerk (authentication)
-- Upstash Redis (backend storage)
+- Turso (libSQL/SQLite) backend storage
 - Vercel serverless functions (`/api`)
 - Tailwind + shadcn/ui + Framer Motion
 
@@ -17,8 +17,12 @@ npm install
 npm run dev
 ```
 
-`npm run dev` starts the Vite frontend on `http://localhost:5173`.
-For full-stack local development (frontend + Vercel `/api/*` functions), run:
+`npm run dev` starts the full stack on `http://localhost:5173` — the Vite
+frontend **and** the `/api/*` functions. A dev-only Vite plugin
+(`vite/api-dev-server.ts`) runs the same handler files locally and loads `.env`
+into `process.env`, so no `vercel dev` / Vercel login is needed day to day.
+
+Alternatively, to run against the real Vercel runtime:
 
 ```bash
 vercel link
@@ -35,8 +39,8 @@ Copy `.env.example` to `.env` and fill in values:
 VITE_CLERK_PUBLISHABLE_KEY=pk_test_xxx
 VITE_API_BASE_URL=
 CLERK_SECRET_KEY=sk_test_xxx
-UPSTASH_REDIS_REST_URL=https://xxx.upstash.io
-UPSTASH_REDIS_REST_TOKEN=xxx
+TURSO_DATABASE_URL=libsql://xxx.turso.io
+TURSO_AUTH_TOKEN=xxx
 ```
 
 `VITE_API_BASE_URL` is optional. Leave it empty for same-origin API calls (recommended); set it only when frontend and API are hosted on different origins.
@@ -53,18 +57,22 @@ UPSTASH_REDIS_REST_TOKEN=xxx
    - GitHub OAuth
 4. Set allowed redirect URLs for your deployed Vercel URL.
 
-## Upstash Redis setup
+## Turso setup
 
-1. Create a Redis database at [upstash.com](https://upstash.com/).
-2. From the database REST API section, copy:
-   - REST URL -> `UPSTASH_REDIS_REST_URL`
-   - REST TOKEN -> `UPSTASH_REDIS_REST_TOKEN`
-3. Add both to your `.env` and Vercel project environment variables.
+1. Create a database at [turso.tech](https://turso.tech/) (free tier; unlike
+   many free stores it does not delete inactive databases). You can use the
+   dashboard or the [Turso CLI](https://docs.turso.tech/cli).
+2. Copy the database URL and an auth token into `.env` (and Vercel project
+   settings) as `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`.
+3. Create the schema (`api/_lib/schema.sql`) — no CLI required:
+   ```bash
+   node --env-file=.env scripts/init-schema.mjs
+   ```
 
 ## Deploying to Vercel
 
 1. Import the repository in Vercel.
-2. Add all four environment variables in the Vercel project settings.
+2. Add all five environment variables in the Vercel project settings.
 3. Deploy.
 4. Use preview deployments to verify API/auth behavior (`/api/projects`, `/api/share/:shareCode`).
 

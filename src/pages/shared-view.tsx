@@ -143,7 +143,7 @@ export function SharedViewPage() {
       </Helmet>
       <div className="mx-auto max-w-4xl space-y-10 px-2 py-8 sm:py-12">
         <div className="space-y-3">
-          <p className="text-xs tracking-[0.2em] text-muted-foreground">SHARED PROJECT</p>
+          <p className="text-gradient text-xs font-medium tracking-[0.2em]">SHARED PROJECT</p>
           <h1 className="text-3xl font-semibold tracking-tight text-foreground">{projectName}</h1>
           <p className="text-sm text-muted-foreground">
             Shared via EnvShare · {environments.length} environments

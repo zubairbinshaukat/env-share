@@ -13,8 +13,14 @@ const SKIP_DIRS = new Set([
   "node_modules",
   ".git",
   ".next",
+  ".vite",
+  ".svelte-kit",
+  ".astro",
+  ".parcel-cache",
+  ".pnpm-store",
   "dist",
   "build",
+  "out",
   ".cache",
   ".vercel",
   ".turbo",
@@ -61,17 +67,20 @@ export function isFolderPickerSupported(): boolean {
 }
 
 /**
- * Stable fingerprint for a candidate folder. Hashes the folder name plus the
- * sorted list of `.env*` filenames discovered inside. Two scans of the same
- * folder produce the same fingerprint regardless of file value changes; only
- * adding/removing env files (or renaming the folder) changes the fingerprint.
+ * Stable fingerprint for a candidate folder, scoped to its repo so the same
+ * leaf name in different repos does not collide (e.g. `lighthouse/apps/frontend`
+ * vs `env-share/apps/frontend`). Hashes the scan root name + the folder's path
+ * relative to that root + the sorted `.env*` filenames. Re-scanning the same
+ * folder from the same root reproduces the fingerprint; changing the file set,
+ * the folder's location, or the selected root changes it.
  */
 export async function computeFolderFingerprint(
-  folderName: string,
+  rootName: string,
+  relativePath: string,
   filenames: string[],
 ): Promise<string> {
   const sorted = [...filenames].sort()
-  const input = [folderName, ...sorted].join("|")
+  const input = [rootName, relativePath || ".", ...sorted].join("|")
   const data = new TextEncoder().encode(input)
   const digest = await crypto.subtle.digest("SHA-256", data)
   const bytes = new Uint8Array(digest)

@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useApi } from "@/lib/api"
 import { copyToClipboard } from "@/lib/env-export"
+import { projectGradientFor } from "@/lib/project-gradient"
 import { buildShareUrl } from "@/lib/share-link"
 import type { ProjectMeta } from "@/lib/types"
 import { cn, timeAgo } from "@/lib/utils"
@@ -49,6 +50,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
 
   const open = () => navigate(`/project/${project.shareCode}`)
   const envCount = project.environmentCount ?? 0
+  const gradient = projectGradientFor(project)
 
   async function handleCopyShareCode() {
     try {
@@ -170,6 +172,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
             open()
           }
         }}
+        style={{ backgroundImage: gradient }}
         className={cn(
           "group/card relative cursor-pointer gap-0 transition-all duration-150",
           "hover:border-primary/40 hover:shadow-[var(--shadow-card-hover)]",
@@ -276,7 +279,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
             >
               Cancel
             </Button>
-            <Button type="button" disabled={busy} onClick={handleRename}>
+            <Button type="button" loading={busy} onClick={handleRename}>
               Save
             </Button>
           </DialogFooter>

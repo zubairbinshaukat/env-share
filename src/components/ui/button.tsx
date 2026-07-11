@@ -1,5 +1,6 @@
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
+import { Loader2 } from "lucide-react"
 import { Slot } from "radix-ui"
 
 import { cn } from "@/lib/utils"
@@ -10,7 +11,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground hover:bg-[color:var(--primary-hover)]",
+          "bg-primary bg-[image:var(--gradient-primary)] text-primary-foreground shadow-sm hover:brightness-105",
         outline:
           "border-border bg-transparent hover:bg-muted hover:text-foreground dark:border-border",
         secondary:
@@ -46,21 +47,48 @@ function Button({
   variant = "default",
   size = "default",
   asChild = false,
+  loading = false,
+  disabled,
+  children,
   ...props
 }: React.ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
+    /** Show a spinner and disable the button while an action is in flight. */
+    loading?: boolean
   }) {
   const Comp = asChild ? Slot.Root : "button"
+
+  // When rendering asChild (e.g. wrapping a link), the child is the single
+  // element — don't inject extra nodes, just reflect disabled state.
+  if (asChild) {
+    return (
+      <Comp
+        data-slot="button"
+        data-variant={variant}
+        data-size={size}
+        aria-busy={loading || undefined}
+        className={cn(buttonVariants({ variant, size, className }))}
+        {...props}
+      >
+        {children}
+      </Comp>
+    )
+  }
 
   return (
     <Comp
       data-slot="button"
       data-variant={variant}
       data-size={size}
+      aria-busy={loading || undefined}
+      disabled={disabled || loading}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
-    />
+    >
+      {loading ? <Loader2 className="animate-spin" aria-hidden /> : null}
+      {children}
+    </Comp>
   )
 }
 

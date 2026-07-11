@@ -46,7 +46,7 @@ export function RegenerateDialog({
           >
             Cancel
           </Button>
-          <Button type="button" disabled={busy} onClick={() => onConfirm()}>
+          <Button type="button" loading={busy} onClick={() => onConfirm()}>
             {busy ? "Regenerating…" : "Generate new link"}
           </Button>
         </DialogFooter>
