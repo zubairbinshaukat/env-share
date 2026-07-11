@@ -1,4 +1,5 @@
-import { createClient, type Client, type Row } from "@libsql/client"
+import { createClient } from "@libsql/client/web"
+import type { Client, Row } from "@libsql/client"
 
 import type { ProjectRecord, ProjectSource } from "./project-record"
 
