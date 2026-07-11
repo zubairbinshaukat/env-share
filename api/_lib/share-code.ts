@@ -1,8 +1,22 @@
-import { customAlphabet } from "nanoid"
+import { randomInt } from "node:crypto"
 
 import { getDb } from "./db"
 
-const generate = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 8)
+const SHARE_CODE_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz"
+const SHARE_CODE_LENGTH = 8
+
+/**
+ * Cryptographically-secure random share code. Replaces nanoid, which is
+ * ESM-only (v5) and cannot be require()d by the compiled CommonJS serverless
+ * functions on Vercel's Node runtime. randomInt() is unbiased and CSPRNG-backed.
+ */
+function generate(): string {
+  let code = ""
+  for (let i = 0; i < SHARE_CODE_LENGTH; i++) {
+    code += SHARE_CODE_ALPHABET[randomInt(SHARE_CODE_ALPHABET.length)]
+  }
+  return code
+}
 
 export async function createUniqueShareCode(): Promise<string> {
   const db = getDb()
